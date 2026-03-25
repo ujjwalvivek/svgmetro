@@ -1,0 +1,110 @@
+name: Release SVG
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release Tag"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and release SVG
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
+        run: npm install
+
+      - name: Test
+        run: npm test
+
+      - name: Build  SVG
+        run: npm run build
+
+      - name: Measure artifact
+        id: size
+        run: |
+          RAW_BYTES=$(wc -c < dist/minimetro.svg)
+          GZIP_BYTES=$(gzip -c dist/minimetro.svg | wc -c)
+          RAW_KB=$(awk "BEGIN { printf \"%.1f\", $RAW_BYTES / 1024 }")
+          GZIP_KB=$(awk "BEGIN { printf \"%.1f\", $GZIP_BYTES / 1024 }")
+          echo "raw_kb=$RAW_KB" >> "$GITHUB_OUTPUT"
+          echo "gzip_kb=$GZIP_KB" >> "$GITHUB_OUTPUT"
+
+      - name: Write release notes
+        run: |
+          cat > release-notes.md <<EOF
+          # SVG Metro ${RELEASE_TAG}
+
+          A playable Mini Metro-inspired transit simulator contained inside one SVG file.
+
+          ## Download
+
+          Download \`minimetro.svg\` from this release and open it directly in a browser.
+
+          Artifact size:
+
+          - Raw SVG: ${{ steps.size.outputs.raw_kb }} KB
+          - Gzip transfer estimate: ${{ steps.size.outputs.gzip_kb }} KB
+
+          ## Use In HTML
+
+          \`\`\`html
+          <object
+            data="./minimetro.svg"
+            type="image/svg+xml"
+            width="100%"
+            height="100%"
+            aria-label="SVG Metro"
+          ></object>
+          \`\`\`
+
+          ## CDN
+
+          \`\`\`html
+          <object
+            data="https://cdn.jsdelivr.net/npm/@ujjwalvivek/svg-metro@latest/dist/minimetro.svg"
+            type="image/svg+xml"
+            width="100%"
+            height="100%"
+            aria-label="SVG Metro"
+          ></object>
+          \`\`\`
+
+          ## Controls
+
+          - Click stations to draft a line.
+          - Enter commits the drafted line.
+          - R removes the active line, or clears the current draft.
+          - N starts a new game.
+          - opts opens sound and volume controls.
+          - save exports the current game as a playable SVG file.
+          EOF
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            dist/minimetro.svg \
+            --title "SVG Metro $RELEASE_TAG" \
+            --notes-file release-notes.md \
+            --latest
