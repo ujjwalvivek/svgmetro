@@ -13,6 +13,8 @@ on:
 
 permissions:
   contents: write
+  packages: write
+  id-token: write
 
 jobs:
   release:
@@ -28,7 +30,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
 
       - name: Install
         run: npm install
@@ -99,12 +101,61 @@ jobs:
           - save exports the current game as a playable SVG file.
           EOF
 
+      - name: Ensure release tag exists
+        run: |
+          git fetch --tags
+          if ! git rev-parse "$RELEASE_TAG" >/dev/null 2>&1; then
+            git tag "$RELEASE_TAG"
+            git push origin "$RELEASE_TAG"
+          fi
+
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$RELEASE_TAG" \
-            dist/minimetro.svg \
-            --title "SVG Metro $RELEASE_TAG" \
-            --notes-file release-notes.md \
-            --latest
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --title "SVG Metro $RELEASE_TAG" \
+              --notes-file release-notes.md \
+              --latest
+          else
+            gh release create "$RELEASE_TAG" \
+              --title "SVG Metro $RELEASE_TAG" \
+              --notes-file release-notes.md \
+              --latest
+          fi
+
+          gh release upload "$RELEASE_TAG" dist/minimetro.svg --clobber
+
+      - name: Setup GitHub Packages registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://npm.pkg.github.com
+          scope: "@ujjwalvivek"
+
+      - name: Publish to GitHub Packages
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          if npm view "@ujjwalvivek/svg-metro@$PACKAGE_VERSION" --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
+            echo "GitHub Packages already has @ujjwalvivek/svg-metro@$PACKAGE_VERSION"
+          else
+            npm publish --registry=https://npm.pkg.github.com
+          fi
+
+      - name: Setup npm registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish to npm
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          if npm view "@ujjwalvivek/svg-metro@$PACKAGE_VERSION" --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+            echo "npm already has @ujjwalvivek/svg-metro@$PACKAGE_VERSION"
+          else
+            npm publish --provenance --access public --registry=https://registry.npmjs.org
+          fi

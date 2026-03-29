@@ -52,6 +52,13 @@ npm install @ujjwalvivek/svg-metro
 
 The SVG is at `node_modules/@ujjwalvivek/svg-metro/dist/minimetro.svg`. Drop it into any HTML page via an `<object>` tag or open directly in a browser.
 
+### Install from GitHub Packages
+
+```sh
+npm config set @ujjwalvivek:registry https://npm.pkg.github.com
+npm install @ujjwalvivek/svg-metro
+```
+
 ### From CDN
 
 ```html
