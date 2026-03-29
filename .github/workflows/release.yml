@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   release:
-    name: Build and release SVG
+    name: Build, Release, and Publish SVG
     runs-on: ubuntu-latest
     env:
       RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
@@ -157,5 +157,5 @@ jobs:
           if npm view "@ujjwalvivek/svg-metro@$PACKAGE_VERSION" --registry=https://registry.npmjs.org >/dev/null 2>&1; then
             echo "npm already has @ujjwalvivek/svg-metro@$PACKAGE_VERSION"
           else
-            npm publish --provenance --access public --registry=https://registry.npmjs.org
+            npm publish --access public --registry https://registry.npmjs.org
           fi
