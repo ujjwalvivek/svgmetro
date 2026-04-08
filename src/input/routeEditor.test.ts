@@ -335,4 +335,51 @@ describe("route editor", () => {
         expect(train.passengers).toEqual([passenger.id]);
         expect(start.queue).toEqual([]);
     });
+    it("blocks commits when no line budget remains", () => {
+        const base = createWorld(61).config;
+        const world = createWorld(61, {
+            ...base,
+            startingLines: 1,
+            maxLines: 1,
+        });
+        const editor = createRouteEditor();
+        const ids = [...world.stations.keys()];
+
+        for (const pair of [[ids[0]!, ids[1]!], [ids[2]!, ids[3]!]] as const) {
+            applyRouteCommand(world, editor, {
+                type: "append-station",
+                stationId: pair[0],
+            });
+            applyRouteCommand(world, editor, {
+                type: "append-station",
+                stationId: pair[1],
+            });
+            applyRouteCommand(world, editor, { type: "commit-route" });
+        }
+
+        expect(world.routes.size).toBe(1);
+        expect(world.trains.size).toBe(1);
+        expect(editor.lastCommand).toBe("no-lines");
+    });
+
+    it("blocks duplicate route commits without spending a line", () => {
+        const world = createWorld(62);
+        const editor = createRouteEditor();
+        const ids = [...world.stations.keys()];
+        const a = ids[0]!;
+        const b = ids[1]!;
+
+        applyRouteCommand(world, editor, { type: "append-station", stationId: a });
+        applyRouteCommand(world, editor, { type: "append-station", stationId: b });
+        applyRouteCommand(world, editor, { type: "commit-route" });
+
+        applyRouteCommand(world, editor, { type: "append-station", stationId: b });
+        applyRouteCommand(world, editor, { type: "append-station", stationId: a });
+        applyRouteCommand(world, editor, { type: "commit-route" });
+
+        expect(world.routes.size).toBe(1);
+        expect(world.trains.size).toBe(1);
+        expect(editor.lastCommand).toBe("duplicate-route");
+    });
+
 });

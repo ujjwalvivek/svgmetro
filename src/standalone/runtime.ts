@@ -24,8 +24,14 @@ import {
 import { createPlayableSvgDocument } from "../save/playableSvg";
 import { encodeWorld } from "../save/worldState";
 import { createRng, rand, randRange } from "../sim/rng";
+import { lineLimit, nextLineUnlockAt } from "../sim/resources";
 import { FIXED_DT, tick } from "../sim/tick";
-import type { World, WorldConfig } from "../sim/types";
+import {
+    difficultyConfigs,
+    type DifficultyName,
+    type World,
+    type WorldConfig,
+} from "../sim/types";
 import { createWorld } from "../sim/world";
 
 declare const __SVG_METRO_PERF__: boolean;
@@ -36,6 +42,8 @@ const PERF_BUILD =
 const NODE_COUNT_SAMPLE_MS = 500;
 const LINE_PALETTE_WIDTH = 214;
 const VOLUME_SLIDER_WIDTH = 92;
+const ATTRACT_ROUTE_INTERVAL = 4.2;
+const ATTRACT_MAX_ROUTES = 18;
 type ScreenMode = "start" | "playing";
 
 const initialMetadata = document
@@ -55,6 +63,7 @@ let currentViewBox: SvgViewBox = stationFitViewBox(world);
 let framedStationCount = -1;
 let audioSnapshot = captureAudioState(world);
 let volumeDrag = false;
+let attractRouteCooldown = ATTRACT_ROUTE_INTERVAL;
 
 const svgRoot = createStandaloneSvgRoot(
     document.documentElement as unknown as SVGSVGElement,
@@ -103,6 +112,11 @@ function isSavedWorldMetadata(metadataText: string | undefined): boolean {
 
 function createAttractWorld(metadataText: string | undefined): World {
     const demo = loadWorldFromMetadataText(metadataText);
+    demo.config = {
+        ...demo.config,
+        maxLines: Math.max(demo.config.maxLines, ATTRACT_MAX_ROUTES),
+        startingLines: Math.max(demo.config.startingLines, ATTRACT_MAX_ROUTES),
+    };
     const editor = createRouteEditor();
     const stations = [...demo.stations.values()];
     const byX = [...stations].sort((a, b) => a.x - b.x);
@@ -125,6 +139,19 @@ function createAttractWorld(metadataText: string | undefined): World {
     return demo;
 }
 
+function resetAttractWorld(): void {
+    world = createAttractWorld(undefined);
+    renderBackground(svgRoot.layers.background, world.config, world.seed);
+    resetRenderState();
+    routeEditor = createRouteEditor();
+    selectedStationId = undefined;
+    audioSnapshot = captureAudioState(world);
+    accumulator = 0;
+    attractRouteCooldown = ATTRACT_ROUTE_INTERVAL;
+    routeEditor.lastCommand = "attract-reset";
+    syncViewBox(true);
+}
+
 function createStandaloneSvgRoot(
     svg: SVGSVGElement,
     config: WorldConfig,
@@ -137,6 +164,7 @@ function createStandaloneSvgRoot(
     svg.setAttribute("aria-label", "SVG Metro");
 
     for (const id of [
+        "svg-defs",
         "background",
         "routes",
         "route-preview",
@@ -154,6 +182,7 @@ function createStandaloneSvgRoot(
         svg.querySelector(`#${id}`)?.remove();
     }
 
+    const defs = createSvgDefs();
     const background = layer("background");
     const routes = layer("routes");
     const routePreview = layer("route-preview");
@@ -165,6 +194,7 @@ function createStandaloneSvgRoot(
 
     renderBackground(background, config, seed);
     svg.append(
+        defs,
         background,
         routes,
         routePreview,
@@ -187,6 +217,37 @@ function createStandaloneSvgRoot(
     };
 
     return { svg, layers };
+}
+
+function createSvgDefs(): SVGDefsElement {
+    const defs = svgEl("defs", { id: "svg-defs" }) as SVGDefsElement;
+    const vignette = svgEl("radialGradient", {
+        id: "start-vignette",
+        cx: "50%",
+        cy: "50%",
+        r: "78%",
+    });
+
+    vignette.append(
+        svgEl("stop", {
+            offset: "0%",
+            "stop-color": "#f1eee5",
+            "stop-opacity": "0.40",
+        }),
+        svgEl("stop", {
+            offset: "50%",
+            "stop-color": "#f1eee5",
+            "stop-opacity": "0.90",
+        }),
+        svgEl("stop", {
+            offset: "100%",
+            "stop-color": "#f1eee5",
+            "stop-opacity": "1.00",
+        }),
+    );
+
+    defs.append(vignette);
+    return defs;
 }
 
 function renderBackground(
@@ -349,79 +410,79 @@ function layer(id: string): SVGGElement {
 function createHud(): SVGGElement {
     const group = svgEl("g", {
         id: "svg-hud",
-        transform: "translate(22 18)",
+        transform: "translate(0 0)",
     });
     const panel = svgEl("rect", {
         class: "svg-hud-panel",
-        width: 340,
-        height: 84,
+        width: 356,
+        height: 70,
     });
     const title = svgEl("text", {
         class: "svg-hud-title",
-        x: 16,
-        y: 25,
+        x: 8,
+        y: 16,
     });
     const status = svgEl("text", {
         id: "svg-hud-status",
         class: "svg-hud-status",
-        x: 252,
-        y: 25,
+        x: 180,
+        y: 16,
     });
     const scoreLabel = svgEl("text", {
         class: "hud-label",
-        x: 16,
-        y: 45,
+        x: 8,
+        y: 32,
     });
     const score = svgEl("text", {
         id: "hud-score",
         class: "hud-value",
-        x: 16,
-        y: 63,
+        x: 8,
+        y: 49,
     });
     const linesLabel = svgEl("text", {
         class: "hud-label",
         x: 74,
-        y: 45,
+        y: 32,
     });
     const lines = svgEl("text", {
         id: "hud-lines",
         class: "hud-value",
         x: 74,
-        y: 63,
+        y: 49,
     });
     const waitingLabel = svgEl("text", {
         class: "hud-label",
-        x: 132,
-        y: 45,
+        x: 142,
+        y: 32,
     });
     const waitingCount = svgEl("text", {
         id: "hud-waiting",
         class: "hud-value hud-warn",
-        x: 132,
-        y: 63,
+        x: 142,
+        y: 49,
     });
     const ridingLabel = svgEl("text", {
         class: "hud-label",
-        x: 206,
-        y: 45,
+        x: 216,
+        y: 32,
     });
     const ridingCount = svgEl("text", {
         id: "hud-riding",
         class: "hud-value",
-        x: 206,
-        y: 63,
+        x: 216,
+        y: 49,
     });
     const statsText = svgEl("text", {
         id: "svg-hud-stats",
         class: "svg-hud-stats",
-        x: 16,
-        y: 80,
+        x: 8,
+        y: 64,
     });
     const meta = svgEl("text", {
         id: "svg-hud-meta",
         class: "svg-hud-meta hud-meta-visible",
-        x: 16,
-        y: 80,
+        x: 8,
+        y: 64,
     });
 
     title.textContent = "SVG METRO";
@@ -445,8 +506,9 @@ function createHud(): SVGGElement {
         ridingCount,
         statsText,
         meta,
-        createButton("save", 276, 9, "save-game", 50, 17),
-        createButton("opts", 276, 29, "toggle-options", 50, 17),
+        createButton("save", 300, 4, "save-game", 50, 17),
+        createButton("opts", 300, 26, "toggle-options", 50, 17),
+        createButton("normal", 300, 48, "cycle-difficulty", 50, 17),
     );
     return group;
 }
@@ -486,7 +548,7 @@ function createStartOverlay(): SVGGElement {
         class: "screen-overlay start-screen",
     });
     const scrim = svgEl("rect", {
-        class: "screen-scrim",
+        class: "screen-scrim start-vignette-scrim",
         x: 0,
         y: 0,
         width: world.config.mapWidth,
@@ -498,39 +560,72 @@ function createStartOverlay(): SVGGElement {
     });
     const panel = svgEl("rect", {
         x: -244,
-        y: -106,
+        y: -128,
         width: 488,
-        height: 212,
+        height: 256,
     });
     const title = svgEl("text", {
         class: "screen-title",
-        y: -44,
+        y: -70,
         "text-anchor": "middle",
     });
     const subtitle = svgEl("text", {
         class: "screen-subtitle",
-        y: -12,
+        y: -38,
         "text-anchor": "middle",
     });
-    const note = svgEl("text", {
-        class: "screen-note",
-        y: 64,
-        "text-anchor": "middle",
-    });
+    const controls = createStartControls();
 
     title.textContent = "SVG METRO";
     subtitle.textContent =
         "A playable transit sim contained inside one SVG file";
-    note.textContent =
-        "Click stations to draw a line. Enter commits. R removes active.";
     card.append(
         panel,
         title,
         subtitle,
-        createButton("start", -60, 20, "start-game", 120, 26),
-        note,
+        createButton("start", -60, -10, "start-game", 120, 26),
+        controls,
     );
     group.append(scrim, card);
+    return group;
+}
+
+function createStartControls(): SVGGElement {
+    const group = svgEl("g", {
+        class: "start-controls",
+        transform: "translate(-160 34)",
+    });
+    const panel = svgEl("rect", {
+        class: "start-controls-panel",
+        width: 320,
+        height: 70,
+    });
+    const rows = [
+        ["click stations", "draw a line"],
+        ["enter", "commit route"],
+        ["backspace / esc", "undo / cancel draft"],
+        ["click route + r", "remove route"],
+        ["n", "new run"],
+    ] as const;
+
+    group.append(panel);
+    rows.forEach(([key, action], index) => {
+        const y = 14 + index * 12;
+        const keyText = svgEl("text", {
+            class: "start-control-key",
+            x: 12,
+            y,
+        });
+        const actionText = svgEl("text", {
+            class: "start-control-action",
+            x: 130,
+            y,
+        });
+        keyText.textContent = key;
+        actionText.textContent = action;
+        group.append(keyText, actionText);
+    });
+
     return group;
 }
 
@@ -538,16 +633,16 @@ function createOptionsPanel(): SVGGElement {
     const group = svgEl("g", {
         id: "options-panel",
         class: "options-panel",
-        transform: "translate(370 18)",
+        transform: "translate(380 18)",
     });
     const panel = svgEl("rect", {
-        width: PERF_BUILD ? 276 : 214,
-        height: PERF_BUILD ? 210 : 116,
+        width: PERF_BUILD ? 276 : 190,
+        height: PERF_BUILD ? 210 : 90,
     });
     const title = svgEl("text", {
         class: "options-title",
-        x: 14,
-        y: 22,
+        x: PERF_BUILD ? 14 : 8,
+        y: PERF_BUILD ? 22 : 16,
     });
     const debugLabel = svgEl("text", {
         id: "debug-toggle-label",
@@ -558,16 +653,16 @@ function createOptionsPanel(): SVGGElement {
     const audioLabel = svgEl("text", {
         id: "audio-toggle-label",
         class: "options-label",
-        x: 14,
-        y: PERF_BUILD ? 78 : 52,
+        x: PERF_BUILD ? 14 : 8,
+        y: PERF_BUILD ? 78 : 36,
     });
     const volumeLabel = svgEl("text", {
         id: "volume-label",
         class: "options-label",
-        x: 14,
-        y: PERF_BUILD ? 104 : 78,
+        x: PERF_BUILD ? 14 : 8,
+        y: PERF_BUILD ? 104 : 56,
     });
-    const volumeSlider = createVolumeSlider(96, PERF_BUILD ? 100 : 74);
+    const volumeSlider = createVolumeSlider(84, PERF_BUILD ? 100 : 52);
     const perfLabel = svgEl("text", {
         class: "options-title",
         x: 14,
@@ -587,16 +682,16 @@ function createOptionsPanel(): SVGGElement {
         volumeSlider,
         createButton(
             "sound",
-            PERF_BUILD ? 196 : 136,
-            PERF_BUILD ? 61 : 35,
+            PERF_BUILD ? 196 : 120,
+            PERF_BUILD ? 61 : 21,
             "toggle-audio",
             60,
             20,
         ),
         createButton(
             "close",
-            PERF_BUILD ? 196 : 136,
-            87,
+            PERF_BUILD ? 196 : 120,
+            PERF_BUILD ? 87 : 64,
             "toggle-options",
             60,
             20,
@@ -767,6 +862,7 @@ interface UiRefs {
     svgGeometryButton: SVGTextElement | null;
     renderAllButton: SVGTextElement | null;
     dirtyButton: SVGTextElement | null;
+    difficultyButton: SVGTextElement | null;
     swatches: SVGCircleElement[];
 }
 
@@ -803,6 +899,9 @@ function createUiRefs(): UiRefs {
         ),
         dirtyButton: svgRoot.svg.querySelector<SVGTextElement>(
             `g[${SVG_ACTION_ATTR}="toggle-dirty-rendering"] text`,
+        ),
+        difficultyButton: svgRoot.svg.querySelector<SVGTextElement>(
+            `g[${SVG_ACTION_ATTR}="cycle-difficulty"] text`,
         ),
         swatches: [
             ...svgRoot.svg.querySelectorAll<SVGCircleElement>(".line-swatch"),
@@ -943,6 +1042,13 @@ function wireInput(): void {
             return;
         }
 
+        if (action === "cycle-difficulty") {
+            event.preventDefault();
+            audio.cue("ui");
+            cycleDifficulty();
+            return;
+        }
+
         if (action === "toggle-audio") {
             event.preventDefault();
             audio.setEnabled(!audio.enabled);
@@ -1039,6 +1145,7 @@ function frame(now: number): void {
 
     while (accumulator >= FIXED_DT) {
         tick(world, FIXED_DT);
+        updateAttractMode(FIXED_DT);
         accumulator -= FIXED_DT;
     }
 
@@ -1048,6 +1155,147 @@ function frame(now: number): void {
     updateFrameStats(stats, frameMs);
     render();
     requestAnimationFrame(frame);
+}
+
+function updateAttractMode(dt: number): void {
+    if (mode !== "start") return;
+
+    if (world.gameOver) {
+        resetAttractWorld();
+        return;
+    }
+
+    attractRouteCooldown -= dt;
+    if (attractRouteCooldown > 0) return;
+
+    attractRouteCooldown = ATTRACT_ROUTE_INTERVAL + rand(world.rng) * 2.2;
+    if (world.routes.size >= ATTRACT_MAX_ROUTES) return;
+
+    if (addAttractRoute()) {
+        markAllStationQueuesDirty();
+        routeEditor.lastCommand = "attract-route";
+    }
+}
+
+function addAttractRoute(): boolean {
+    const route = chooseAttractRoute();
+    if (!route) return false;
+
+    const editor = createRouteEditor();
+    for (const stationId of route) {
+        if (!applyRouteCommand(world, editor, { type: "append-station", stationId })) {
+            return false;
+        }
+    }
+
+    return applyRouteCommand(world, editor, { type: "commit-route" });
+}
+
+function chooseAttractRoute(): number[] | undefined {
+    const stations = [...world.stations.values()];
+    const connected = new Set<number>();
+    for (const route of world.routes.values()) {
+        for (const stationId of route.stationIds) connected.add(stationId);
+    }
+
+    const starts = [...stations].sort((a, b) =>
+        stationAttractPressure(b, connected) - stationAttractPressure(a, connected),
+    );
+
+    for (const start of starts) {
+        const candidates = stations
+            .filter((station) => station.id !== start.id && station.type !== start.type)
+            .sort((a, b) =>
+                attractRouteScore(start, a, connected) -
+                    attractRouteScore(start, b, connected),
+            );
+
+        for (const end of candidates.slice(0, 6)) {
+            const midpoint = chooseAttractMidpoint(start.id, end.id);
+            const route = midpoint === undefined
+                ? [start.id, end.id]
+                : [start.id, midpoint, end.id];
+            if (!attractRouteExists(route)) return route;
+        }
+    }
+}
+
+function stationAttractPressure(
+    station: { id: number; queue: number[]; overcrowd: number },
+    connected: Set<number>,
+): number {
+    return station.queue.length * 8 + station.overcrowd * 5 +
+        (connected.has(station.id) ? 0 : 80);
+}
+
+function attractRouteScore(
+    start: { x: number; y: number },
+    end: { id: number; x: number; y: number; queue: number[]; overcrowd: number },
+    connected: Set<number>,
+): number {
+    const distance = Math.hypot(end.x - start.x, end.y - start.y);
+    const pressureBonus = end.queue.length * 18 + end.overcrowd * 10 +
+        (connected.has(end.id) ? 0 : 90);
+    return distance - pressureBonus;
+}
+
+function chooseAttractMidpoint(startId: number, endId: number): number | undefined {
+    if (rand(world.rng) > 0.45) return undefined;
+
+    const start = world.stations.get(startId);
+    const end = world.stations.get(endId);
+    if (!start || !end) return undefined;
+
+    const stations = [...world.stations.values()]
+        .filter(
+            (station) =>
+                station.id !== startId &&
+                station.id !== endId &&
+                station.type !== start.type &&
+                station.type !== end.type,
+        )
+        .sort((a, b) =>
+            pointLineDistance(a.x, a.y, start.x, start.y, end.x, end.y) -
+                pointLineDistance(b.x, b.y, start.x, start.y, end.x, end.y),
+        );
+
+    const midpoint = stations[0];
+    if (!midpoint) return undefined;
+
+    const direct = Math.hypot(end.x - start.x, end.y - start.y);
+    const via = Math.hypot(midpoint.x - start.x, midpoint.y - start.y) +
+        Math.hypot(end.x - midpoint.x, end.y - midpoint.y);
+    return via < direct * 1.55 ? midpoint.id : undefined;
+}
+
+function pointLineDistance(
+    px: number,
+    py: number,
+    ax: number,
+    ay: number,
+    bx: number,
+    by: number,
+): number {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lengthSq = dx * dx + dy * dy;
+    const t = lengthSq === 0
+        ? 0
+        : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSq));
+    const x = ax + dx * t;
+    const y = ay + dy * t;
+    return Math.hypot(px - x, py - y);
+}
+
+function attractRouteExists(stationIds: number[]): boolean {
+    return [...world.routes.values()].some((route) =>
+        sameStationIds(route.stationIds, stationIds) ||
+            sameStationIds(route.stationIds, [...stationIds].reverse()),
+    );
+}
+
+function sameStationIds(a: number[], b: number[]): boolean {
+    return a.length === b.length && a.every((stationId, index) => stationId === b[index]);
 }
 
 function applyCommand(command: GameCommand): void {
@@ -1063,9 +1311,36 @@ function markAllStationQueuesDirty(): void {
     }
 }
 
+function cycleDifficulty(): void {
+    const order: DifficultyName[] = ["normal", "hard", "brutal"];
+    const current = world.config.difficulty;
+    const next = order[(order.indexOf(current) + 1) % order.length] ?? "normal";
+    world.config = {
+        ...difficultyConfigs[next],
+        mapWidth: world.config.mapWidth,
+        mapHeight: world.config.mapHeight,
+        margin: world.config.margin,
+    };
+
+    for (const train of world.trains.values()) {
+        train.speed = world.config.trainSpeed;
+        train.capacity = Math.max(
+            train.passengers.length,
+            world.config.trainCapacity,
+        );
+    }
+
+    routeEditor.lastCommand = `difficulty-${next}`;
+    render();
+}
+
 function startGame(): void {
     mode = "playing";
-    world = createWorld((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
+    const difficulty = world.config.difficulty;
+    world = createWorld(
+        (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0,
+        difficultyConfigs[difficulty],
+    );
     renderBackground(svgRoot.layers.background, world.config, world.seed);
     resetRenderState();
     routeEditor = createRouteEditor();
@@ -1079,7 +1354,11 @@ function startGame(): void {
 
 function restart(): void {
     mode = "playing";
-    world = createWorld((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
+    const difficulty = world.config.difficulty;
+    world = createWorld(
+        (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0,
+        difficultyConfigs[difficulty],
+    );
     renderBackground(svgRoot.layers.background, world.config, world.seed);
     resetRenderState();
     routeEditor = createRouteEditor();
@@ -1158,7 +1437,7 @@ function syncViewportUi(): void {
     );
     optionsPanel.setAttribute(
         "transform",
-        `translate(${x + 370 * scale} ${y + 18 * scale}) scale(${scale})`,
+        `translate(${x + 380 * scale} ${y + 18 * scale}) scale(${scale})`,
     );
     linePalette.setAttribute(
         "transform",
@@ -1213,7 +1492,8 @@ function renderUi(): void {
     }
 
     if (ui.score) ui.score.textContent = String(world.score);
-    if (ui.lines) ui.lines.textContent = String(world.routes.size);
+    if (ui.lines)
+        ui.lines.textContent = `${world.routes.size}/${lineLimit(world)}`;
     if (ui.waiting) ui.waiting.textContent = String(waiting);
     if (ui.riding) ui.riding.textContent = String(riding);
 
@@ -1248,8 +1528,9 @@ function renderUi(): void {
         ui.renderAllButton.textContent = `allpax ${world.debug.renderAllPassengers ? "on" : "off"}`;
     if (ui.dirtyButton)
         ui.dirtyButton.textContent = `dirty ${world.debug.dirtyRendering ? "on" : "off"}`;
-    if (ui.meta)
-        ui.meta.textContent = `lines ${world.routes.size} unlimited  trains ${world.trains.size}  stations ${world.stations.size}/${world.config.maxStations}`;
+    if (ui.difficultyButton)
+        ui.difficultyButton.textContent = world.config.difficulty;
+    if (ui.meta) ui.meta.textContent = hudMetaText();
 
     ui.swatches.forEach((swatch, index) => {
         swatch.classList.toggle("is-used", index < world.routes.size);
@@ -1260,6 +1541,15 @@ function renderUi(): void {
                 !world.gameOver,
         );
     });
+}
+
+function hudMetaText(): string {
+    const nextLineAt = nextLineUnlockAt(world);
+    const nextLine =
+        nextLineAt === undefined
+            ? "max lines"
+            : `+1 line at ${nextLineAt} stations`;
+    return `trains ${world.trains.size} | stations ${world.stations.size}/${world.config.maxStations} | ${nextLine}`;
 }
 
 function updateVolumeFromPointer(event: PointerEvent): void {

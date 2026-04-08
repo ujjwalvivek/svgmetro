@@ -101,13 +101,18 @@ export function stationSpawnInterval(world: World): number {
 }
 
 export function difficultyPressure(world: World): number {
-    return Math.min(world.time / 600, 1);
+    return Math.min(world.time / 200, 1);
 }
 
 function unlockedStationTypes(world: World): StationType[] {
-    if (world.time >= 600)
+    if (world.time >= world.config.starUnlockAt) {
         return ["circle", "square", "triangle", "diamond", "star"];
-    if (world.time >= 300) return ["circle", "square", "triangle", "diamond"];
+    }
+
+    if (world.time >= world.config.diamondUnlockAt) {
+        return ["circle", "square", "triangle", "diamond"];
+    }
+
     return ["circle", "square", "triangle"];
 }
 

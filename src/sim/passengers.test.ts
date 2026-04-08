@@ -4,6 +4,7 @@ import {
     boardAt,
     disembarkAt,
     handleTrainArrivals,
+    passengerInterval,
     spawnPassengerAt,
 } from "./passengers";
 import { createWorld } from "./world";
@@ -312,4 +313,15 @@ describe("passengers", () => {
         expect(train1.passengers).toEqual([passenger.id]);
         expect(world.passengers.get(passenger.id)?.unreachable).toBe(false);
     });
+    it("ramps passenger spawn intervals downward with pressure", () => {
+        const early = createWorld(70);
+        const late = createWorld(70);
+        late.time = 600;
+
+        const earlyInterval = passengerInterval(early);
+        const lateInterval = passengerInterval(late);
+
+        expect(lateInterval).toBeLessThan(earlyInterval);
+    });
+
 });

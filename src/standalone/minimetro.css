@@ -432,6 +432,10 @@
     fill: rgba(241, 238, 229, 0.72);
 }
 
+.start-vignette-scrim {
+    fill: url(#start-vignette);
+}
+
 .screen-card > rect,
 .options-panel > rect {
     fill: rgba(250, 247, 238, 0.92);
@@ -458,6 +462,25 @@
 .screen-note {
     fill: rgba(68, 54, 53, 0.62);
     font-size: 6px;
+}
+
+.start-controls-panel {
+    fill: rgba(255, 255, 255, 0.22);
+    stroke: rgba(68, 54, 53, 0.14);
+    stroke-width: 1;
+    shape-rendering: crispEdges;
+}
+
+.start-control-key {
+    fill: #443635;
+    font-size: 6px;
+    font-weight: 900;
+}
+
+.start-control-action {
+    fill: rgba(68, 54, 53, 0.62);
+    font-size: 6px;
+    font-weight: 700;
 }
 
 .game-over-overlay rect {

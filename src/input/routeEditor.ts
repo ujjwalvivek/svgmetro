@@ -1,5 +1,6 @@
 import type { Route, RouteId, StationId, World } from "../sim/types";
 import { boardAt } from "../sim/passengers";
+import { hasLineSlot } from "../sim/resources";
 import { invalidateRouteGraph } from "../sim/routing";
 import { removeRouteTrains, resetTrainForRoute } from "../sim/trains";
 
@@ -143,6 +144,17 @@ function resetRoute(world: World, editor: RouteEditor): boolean {
 function commitRoute(world: World, editor: RouteEditor): boolean {
     if (editor.draftStationIds.length < 2) return false;
 
+    if (hasDuplicateRoute(world, editor.draftStationIds)) {
+        editor.lastCommand = "duplicate-route";
+        editor.invalidStationId = editor.draftStationIds.at(-1);
+        return false;
+    }
+
+    if (!hasLineSlot(world)) {
+        editor.lastCommand = "no-lines";
+        return false;
+    }
+
     const route: Route = {
         id: world.nextRouteId,
         color: routeColor(world.nextRouteId),
@@ -162,6 +174,17 @@ function commitRoute(world: World, editor: RouteEditor): boolean {
     editor.invalidStationId = undefined;
     editor.previewStationId = undefined;
     return true;
+}
+
+function hasDuplicateRoute(world: World, stationIds: StationId[]): boolean {
+    return [...world.routes.values()].some((route) =>
+        sameStationSequence(route.stationIds, stationIds) ||
+            sameStationSequence(route.stationIds, [...stationIds].reverse()),
+    );
+}
+
+function sameStationSequence(a: StationId[], b: StationId[]): boolean {
+    return a.length === b.length && a.every((stationId, index) => stationId === b[index]);
 }
 
 function boardTrainAtRouteStart(

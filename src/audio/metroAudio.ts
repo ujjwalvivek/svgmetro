@@ -20,14 +20,17 @@ export interface MetroAudio {
     cue(cue: AudioCue): void;
 }
 
-const MASTER_GAIN = 2.4;
-const AMBIENT_GAIN = 0.34;
-const SFX_GAIN = 1.35;
-const LOOKAHEAD_SECONDS = 0.32;
-const STEP_SECONDS = 60 / 76;
-const AMBIENT_PATTERN = [
-    57, 64, 69, 64, 60, 67, 72, 67, 55, 62, 67, 62, 60, 64, 69, 64,
-];
+const MASTER_GAIN = 1.85;
+const AMBIENT_GAIN = 0.42;
+const SFX_GAIN = 1.05;
+const LOOKAHEAD_SECONDS = 0.42;
+const STEP_SECONDS = 60 / 92;
+const ROOT_PATTERN = [57, 60, 55, 53, 57, 64, 60, 55];
+const MELODY_PATTERN = [
+    69, undefined, 72, 76, 74, undefined, 72, 67,
+    69, 71, undefined, 72, 76, 74, 72, undefined,
+] as const;
+const COUNTER_PATTERN = [64, undefined, 67, undefined, 64, 62, undefined, 60] as const;
 const CUE_LIMITS: Record<AudioCue, number> = {
     ui: 0.035,
     select: 0.045,
@@ -46,9 +49,8 @@ export function createMetroAudio(): MetroAudio {
     let ambientBus: GainNode | undefined;
     let sfxBus: GainNode | undefined;
     let delay: DelayNode | undefined;
+    let highpass: BiquadFilterNode | undefined;
     let feedback: GainNode | undefined;
-    let drone: OscillatorNode[] = [];
-    let droneGain: GainNode | undefined;
     let nextStepTime = 0;
     let step = 0;
     let enabled = true;
@@ -72,12 +74,16 @@ export function createMetroAudio(): MetroAudio {
         sfxBus = audioContext.createGain();
         delay = audioContext.createDelay(1.2);
         feedback = audioContext.createGain();
+        highpass = audioContext.createBiquadFilter();
 
         master.gain.value = outputGain();
         ambientBus.gain.value = AMBIENT_GAIN;
         sfxBus.gain.value = SFX_GAIN;
-        delay.delayTime.value = 0.34;
-        feedback.gain.value = 0.18;
+        delay.delayTime.value = 0.29;
+        feedback.gain.value = 0.14;
+        highpass.type = "highpass";
+        highpass.frequency.value = 145;
+        highpass.Q.value = 0.6;
 
         ambientBus.connect(delay);
         delay.connect(feedback);
@@ -85,12 +91,12 @@ export function createMetroAudio(): MetroAudio {
         delay.connect(master);
         ambientBus.connect(master);
         sfxBus.connect(master);
-        master.connect(compressor);
+        master.connect(highpass);
+        highpass.connect(compressor);
         compressor.connect(audioContext.destination);
 
         context = audioContext;
         nextStepTime = audioContext.currentTime + 0.12;
-        startDrone(audioContext);
         return audioContext;
     }
 
@@ -108,7 +114,6 @@ export function createMetroAudio(): MetroAudio {
         enabled = nextEnabled;
 
         if (!enabled) {
-            stopDrone();
             if (master && context)
                 ramp(master.gain, 0, context.currentTime, 0.18);
             return;
@@ -118,7 +123,6 @@ export function createMetroAudio(): MetroAudio {
         if (!audioContext || !master) return;
 
         ramp(master.gain, outputGain(), audioContext.currentTime, 0.18);
-        if (drone.length === 0) startDrone(audioContext);
         unlock();
     }
 
@@ -137,7 +141,7 @@ export function createMetroAudio(): MetroAudio {
         while (nextStepTime < audioContext.currentTime + LOOKAHEAD_SECONDS) {
             scheduleAmbientStep(audioContext, nextStepTime, step);
             nextStepTime += STEP_SECONDS;
-            step = (step + 1) % AMBIENT_PATTERN.length;
+            step = (step + 1) % MELODY_PATTERN.length;
         }
     }
 
@@ -172,14 +176,16 @@ export function createMetroAudio(): MetroAudio {
                 bell(audioContext, now, 1046.5, 0.26);
                 return;
             case "start":
-                chord(audioContext, now, [220, 330, 440], 0.58, 0.2);
+                chord(audioContext, now, [293.66, 369.99, 440], 0.72, 0.12);
+                sparkle(audioContext, now + 0.08, 880, 0.08);
                 return;
             case "congestion":
-                pluck(audioContext, 196, now, 0.16, 0.22);
-                pluck(audioContext, 246.94, now + 0.09, 0.14, 0.16);
+                pluck(audioContext, 440, now, 0.11, 0.08);
+                pluck(audioContext, 523.25, now + 0.11, 0.1, 0.065);
                 return;
             case "gameover":
-                chord(audioContext, now, [174.61, 220, 261.63], 1.4, 0.22);
+                chord(audioContext, now, [246.94, 293.66, 369.99], 1.55, 0.13);
+                sparkle(audioContext, now + 0.18, 739.99, 0.055);
                 return;
         }
     }
@@ -189,24 +195,51 @@ export function createMetroAudio(): MetroAudio {
         time: number,
         stepIndex: number,
     ): void {
-        const midi = AMBIENT_PATTERN[stepIndex]!;
-        const isRootPulse = stepIndex % 4 === 0;
-        const frequency = midiToFrequency(midi);
-        ambientVoice(
-            audioContext,
-            frequency,
-            time,
-            isRootPulse ? 1.85 : 1.28,
-            isRootPulse ? 0.18 : 0.13,
-        );
+        const root = ROOT_PATTERN[stepIndex % ROOT_PATTERN.length]!;
+        const melody = MELODY_PATTERN[stepIndex % MELODY_PATTERN.length];
+        const counter = COUNTER_PATTERN[stepIndex % COUNTER_PATTERN.length];
+        const phraseStart = stepIndex % 8 === 0;
 
-        if (stepIndex % 8 === 2) {
+        if (stepIndex % 2 === 0) {
+            softBeat(audioContext, time, phraseStart);
+        }
+
+        if (phraseStart) {
             ambientVoice(
                 audioContext,
-                midiToFrequency(midi + 12),
-                time + 0.04,
-                0.8,
-                0.075,
+                midiToFrequency(root + 12),
+                time + 0.02,
+                0.36,
+                0.045,
+            );
+        }
+
+        if (melody !== undefined) {
+            ambientVoice(
+                audioContext,
+                midiToFrequency(melody),
+                time + 0.03,
+                0.44,
+                0.082,
+            );
+        }
+
+        if (counter !== undefined && stepIndex % 2 === 0) {
+            ambientVoice(
+                audioContext,
+                midiToFrequency(counter + 12),
+                time + 0.09,
+                0.26,
+                0.036,
+            );
+        }
+
+        if (stepIndex % 16 === 6 || stepIndex % 16 === 14) {
+            sparkle(
+                audioContext,
+                time + 0.12,
+                midiToFrequency(root + 24),
+                0.03,
             );
         }
     }
@@ -227,10 +260,10 @@ export function createMetroAudio(): MetroAudio {
         oscillator.type = "triangle";
         oscillator.frequency.setValueAtTime(frequency, time);
         filter.type = "lowpass";
-        filter.frequency.setValueAtTime(1080, time);
-        filter.Q.setValueAtTime(0.3, time);
+        filter.frequency.setValueAtTime(1420, time);
+        filter.Q.setValueAtTime(0.24, time);
         gain.gain.setValueAtTime(0.0001, time);
-        gain.gain.exponentialRampToValueAtTime(level, time + 0.08);
+        gain.gain.exponentialRampToValueAtTime(level, time + 0.11);
         gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
 
         oscillator.connect(filter);
@@ -238,6 +271,40 @@ export function createMetroAudio(): MetroAudio {
         gain.connect(ambientBus);
         oscillator.start(time);
         oscillator.stop(time + duration + 0.05);
+    }
+
+    function softBeat(
+        audioContext: AudioContext,
+        time: number,
+        accent: boolean,
+    ): void {
+        if (!ambientBus) return;
+
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        const filter = audioContext.createBiquadFilter();
+        const frequency = accent ? 246.94 : 293.66;
+        const level = accent ? 0.09 : 0.052;
+        const duration = accent ? 0.12 : 0.085;
+
+        oscillator.type = "triangle";
+        oscillator.frequency.setValueAtTime(frequency, time);
+        oscillator.frequency.exponentialRampToValueAtTime(
+            frequency * 0.86,
+            time + duration,
+        );
+        filter.type = "bandpass";
+        filter.frequency.setValueAtTime(frequency * 1.35, time);
+        filter.Q.setValueAtTime(1.8, time);
+        gain.gain.setValueAtTime(0.0001, time);
+        gain.gain.exponentialRampToValueAtTime(level, time + 0.006);
+        gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+
+        oscillator.connect(filter);
+        filter.connect(gain);
+        gain.connect(ambientBus);
+        oscillator.start(time);
+        oscillator.stop(time + duration + 0.02);
     }
 
     function pluck(
@@ -274,8 +341,18 @@ export function createMetroAudio(): MetroAudio {
         frequency: number,
         level: number,
     ): void {
-        pluck(audioContext, frequency, time, 0.18, level);
-        pluck(audioContext, frequency * 1.5, time + 0.015, 0.14, level * 0.46);
+        pluck(audioContext, frequency, time, 0.16, level * 0.72);
+        pluck(audioContext, frequency * 1.5, time + 0.018, 0.13, level * 0.28);
+    }
+
+    function sparkle(
+        audioContext: AudioContext,
+        time: number,
+        frequency: number,
+        level: number,
+    ): void {
+        pluck(audioContext, frequency, time, 0.07, level);
+        pluck(audioContext, frequency * 1.25, time + 0.035, 0.06, level * 0.55);
     }
 
     function chord(
@@ -290,42 +367,6 @@ export function createMetroAudio(): MetroAudio {
         }
     }
 
-    function startDrone(audioContext: AudioContext): void {
-        if (!ambientBus || drone.length > 0) return;
-
-        droneGain = audioContext.createGain();
-        droneGain.gain.setValueAtTime(0.0001, audioContext.currentTime);
-        droneGain.gain.exponentialRampToValueAtTime(
-            0.11,
-            audioContext.currentTime + 1.2,
-        );
-        droneGain.connect(ambientBus);
-
-        for (const frequency of [110, 164.81]) {
-            const oscillator = audioContext.createOscillator();
-            oscillator.type = "sine";
-            oscillator.frequency.value = frequency;
-            oscillator.connect(droneGain);
-            oscillator.start();
-            drone.push(oscillator);
-        }
-    }
-
-    function stopDrone(): void {
-        const audioContext = context;
-        if (droneGain && audioContext) {
-            ramp(droneGain.gain, 0.0001, audioContext.currentTime, 0.25);
-        }
-
-        for (const oscillator of drone) {
-            try {
-                oscillator.stop((audioContext?.currentTime ?? 0) + 0.3);
-            } catch {}
-        }
-
-        drone = [];
-        droneGain = undefined;
-    }
 
     function ramp(
         param: AudioParam,

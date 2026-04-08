@@ -27,10 +27,11 @@ describe("congestion", () => {
         }
 
         updateCongestion(world, 5);
+        const previous = station.overcrowd;
         station.queue = [];
         updateCongestion(world, 1);
 
-        expect(station.overcrowd).toBe(0);
+        expect(station.overcrowd).toBeLessThan(previous);
         expect(world.gameOver).toBe(false);
     });
 
@@ -45,8 +46,24 @@ describe("congestion", () => {
         updateCongestion(world, 6);
 
         const expected =
-            6 / (world.config.queueWarning - world.config.queueLimit);
+            6 *
+            Math.pow(
+                1 / (world.config.queueWarning - world.config.queueLimit),
+                1.25,
+            ) *
+            world.config.overcrowdGrowthRate;
         expect(station.overcrowd).toBeCloseTo(expected);
         expect(world.gameOver).toBe(false);
     });
+    it("treats unreachable passengers as congestion pressure", () => {
+        const world = createWorld(43);
+        const station = [...world.stations.values()][0]!;
+        const passenger = spawnPassengerAt(world, station, "star");
+        passenger.unreachable = true;
+
+        updateCongestion(world, 1);
+
+        expect(station.overcrowd).toBeGreaterThan(0);
+    });
+
 });

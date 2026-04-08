@@ -4,6 +4,8 @@ A Mini Metro-inspired transport simulation inside a SVG file. `minimetro.svg` is
 
 <img src="https://cdn.ujjwalvivek.com/showcase/svg-metro.gif" width="100%" height="600">
 
+Play on Itch.io: [SVG Metro](https://ujjwalvivek.itch.io/svg-metro)
+
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
 │                          INPUT & CONTROLS                              │

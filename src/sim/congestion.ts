@@ -4,14 +4,23 @@ export function updateCongestion(world: World, dt: number): void {
     for (const station of world.stations.values()) {
         const previous = station.overcrowd;
 
-        if (station.queue.length > world.config.queueLimit) {
-            const overload = station.queue.length - world.config.queueLimit;
+        const unreachable = station.queue.reduce((count, passengerId) => {
+            const passenger = world.passengers.get(passengerId);
+            return count + (passenger?.unreachable ? 1 : 0);
+        }, 0);
+        const overload = Math.max(0, station.queue.length - world.config.queueLimit);
+
+        if (overload > 0 || unreachable > 0) {
             const warningRange = Math.max(
                 1,
                 world.config.queueWarning - world.config.queueLimit,
             );
-            const pressure = Math.min(1.75, overload / warningRange);
-            station.overcrowd += dt * pressure;
+            const queuePressure = Math.pow(overload / warningRange, 1.25);
+            const unreachablePressure =
+                (unreachable / Math.max(1, world.config.queueWarning)) *
+                world.config.unreachableCongestionRate;
+            const pressure = Math.min(3.2, queuePressure + unreachablePressure);
+            station.overcrowd += dt * pressure * world.config.overcrowdGrowthRate;
         } else {
             station.overcrowd -= dt * world.config.overcrowdRecoveryRate;
         }

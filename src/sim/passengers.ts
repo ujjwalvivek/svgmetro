@@ -134,10 +134,18 @@ function shouldTransfer(
 }
 
 export function passengerInterval(world: World): number {
-    const pressure = Math.min(world.time / 600, 1);
-    const min = lerp(world.config.passengerSpawnMin, 8, pressure);
-    const max = lerp(world.config.passengerSpawnMax, 14, pressure);
-    return randRange(world.rng, min, max);
+    const pressure = Math.min(world.time / 420, 1);
+    const min = lerp(
+        world.config.passengerSpawnMin,
+        world.config.passengerSpawnLateMin,
+        pressure,
+    );
+    const max = lerp(
+        world.config.passengerSpawnMax,
+        world.config.passengerSpawnLateMax,
+        pressure,
+    );
+    return randRange(world.rng, Math.min(min, max), Math.max(min, max));
 }
 
 function chooseTargetType(world: World, station: Station): StationType {
