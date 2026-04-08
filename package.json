@@ -1,6 +1,6 @@
 {
     "name": "@ujjwalvivek/svg-metro",
-    "version": "1.1.2",
+    "version": "1.2.0",
     "description": "A playable Mini Metro-inspired transit simulator contained inside one SVG file.",
     "type": "module",
     "license": "MIT",
