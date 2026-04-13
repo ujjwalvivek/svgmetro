@@ -74,7 +74,7 @@ export interface World {
     nextTrainId: number;
     rng: RngState;
     config: WorldConfig;
-    debug: WorldDebug;
+    debug?: WorldDebug;
 }
 
 export interface WorldDebug {

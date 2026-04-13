@@ -9,6 +9,11 @@ import {
     type WorldDebug,
 } from "../sim/types";
 
+declare const __SVG_METRO_PERF__: boolean;
+
+const PERF_BUILD =
+    typeof __SVG_METRO_PERF__ === "boolean" ? __SVG_METRO_PERF__ : true;
+
 export const SAVE_VERSION = 1;
 
 export interface SaveData {
@@ -29,7 +34,7 @@ export interface SaveData {
         nextTrainId: number;
         rngState: number;
         config: WorldConfig;
-        debug: WorldDebug;
+        debug?: WorldDebug;
         stations: Station[];
         passengers: Passenger[];
         routes: Route[];
@@ -56,7 +61,7 @@ export function serializeWorld(world: World): SaveData {
             nextTrainId: world.nextTrainId,
             rngState: world.rng.state,
             config: { ...world.config },
-            debug: { ...world.debug },
+            ...(PERF_BUILD && world.debug ? { debug: { ...world.debug } } : {}),
             stations: [...world.stations.values()].map((station) => ({
                 ...station,
                 queue: [...station.queue],
@@ -105,11 +110,17 @@ export function deserializeWorld(save: SaveData): World {
         nextTrainId: save.world.nextTrainId,
         rng: { state: save.world.rngState >>> 0 },
         config,
-        debug: {
-            renderAllPassengers: save.world.debug.renderAllPassengers,
-            dirtyRendering: save.world.debug.dirtyRendering,
-            useSvgGeometry: save.world.debug.useSvgGeometry ?? false,
-        },
+        ...(PERF_BUILD
+            ? {
+                  debug: {
+                      renderAllPassengers:
+                          save.world.debug?.renderAllPassengers ?? false,
+                      dirtyRendering: save.world.debug?.dirtyRendering ?? true,
+                      useSvgGeometry:
+                          save.world.debug?.useSvgGeometry ?? false,
+                  },
+              }
+            : {}),
     };
 
     for (const station of save.world.stations) {

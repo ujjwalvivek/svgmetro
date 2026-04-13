@@ -8,6 +8,11 @@ import {
     type WorldConfig,
 } from "./types";
 
+declare const __SVG_METRO_PERF__: boolean;
+
+const PERF_BUILD =
+    typeof __SVG_METRO_PERF__ === "boolean" ? __SVG_METRO_PERF__ : true;
+
 const INITIAL_TYPES: StationType[] = ["circle", "square", "triangle"];
 const MIN_STATION_DISTANCE = 110;
 const MAX_CANDIDATES = 64;
@@ -34,11 +39,15 @@ export function createWorld(
         nextTrainId: 1,
         rng: createRng(seed),
         config,
-        debug: {
-            renderAllPassengers: false,
-            dirtyRendering: true,
-            useSvgGeometry: false,
-        },
+        ...(PERF_BUILD
+            ? {
+                  debug: {
+                      renderAllPassengers: false,
+                      dirtyRendering: true,
+                      useSvgGeometry: false,
+                  },
+              }
+            : {}),
     };
 
     createInitialStations(world);

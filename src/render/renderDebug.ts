@@ -66,8 +66,8 @@ export function renderDebug(
         `net    stations ${world.stations.size}  lines ${world.routes.size}  trains ${world.trains.size}  next station ${Math.ceil(world.stationSpawnCooldown)}s`,
         `load   waiting ${waitingPassengers(world)}  riding ${ridingPassengers(world)}  reachable ${reachability.reachable}  blocked ${reachability.unreachable}`,
         `draw   queues ${metrics?.queueRenderCount ?? 0}  station dirty ${metrics?.dirtyStationUpdates ?? 0}  routes ${metrics?.routePathUpdates ?? 0}  trains ${metrics?.trainTransformUpdates ?? 0}`,
-        `dom    passenger icons ${metrics?.passengerIconNodes ?? 0}  allpax ${world.debug.renderAllPassengers ? "on" : "off"}  dirty ${world.debug.dirtyRendering ? "on" : "off"}`,
-        `edit   draft ${stats.draftStations}  selected ${stats.selectedStationId ?? "-"}  geom ${world.debug.useSvgGeometry ? "svg" : "sim"}  last ${stats.lastCommand}`,
+        `dom    passenger icons ${metrics?.passengerIconNodes ?? 0}  allpax ${world.debug?.renderAllPassengers ? "on" : "off"}  dirty ${world.debug?.dirtyRendering ? "on" : "off"}`,
+        `edit   draft ${stats.draftStations}  selected ${stats.selectedStationId ?? "-"}  geom ${world.debug?.useSvgGeometry ? "svg" : "sim"}  last ${stats.lastCommand}`,
     ];
 
     cache.lines?.forEach((line, index) => {

@@ -1,4 +1,10 @@
 import { setAttrs, svgEl } from "./svgElements";
+
+declare const __SVG_METRO_PERF__: boolean;
+
+const PERF_BUILD =
+    typeof __SVG_METRO_PERF__ === "boolean" ? __SVG_METRO_PERF__ : true;
+
 import type { Station, StationId, StationType, World } from "../sim/types";
 
 export interface StationRenderCache {
@@ -82,7 +88,7 @@ export function renderStations(
         if (previewColor)
             node.style.setProperty("--preview-color", previewColor);
 
-        if (station.dirtyQueue || !world.debug.dirtyRendering) {
+        if (station.dirtyQueue || (PERF_BUILD && !world.debug?.dirtyRendering)) {
             const passengerLayer = node.querySelector<SVGGElement>(
                 ".station-passengers",
             );
@@ -177,9 +183,8 @@ function renderStationQueue(
     world: World,
     station: Station,
 ): { passengerIconNodes: number } {
-    const maxVisible = world.debug.renderAllPassengers
-        ? Number.POSITIVE_INFINITY
-        : 12;
+    const renderAllPassengers = PERF_BUILD && world.debug?.renderAllPassengers;
+    const maxVisible = renderAllPassengers ? Number.POSITIVE_INFINITY : 12;
     const visible = station.queue.slice(0, maxVisible);
     const fragment = document.createDocumentFragment();
     const anchor = queueAnchor(world, station);
@@ -201,7 +206,7 @@ function renderStationQueue(
         fragment.append(icon);
     });
 
-    if (!world.debug.renderAllPassengers && station.queue.length > maxVisible) {
+    if (!renderAllPassengers && station.queue.length > maxVisible) {
         const overflow = svgEl("text", {
             class: "passenger-overflow",
             x: anchor.x,

@@ -26,11 +26,13 @@ const [styleSource, fontSource] = await Promise.all([
     readFile(path.join(root, "src", "standalone", "minimetro.css"), "utf8"),
     readFile(path.join(root, "public", "svg-metro.woff2")),
 ]);
-const result = await transform(styleSource, { loader: "css", minify: true });
-const minifiedStyle = result.code;
+const [leanStyleResult, perfStyleResult] = await Promise.all([
+    transform(stripLeanOnlyCss(styleSource), { loader: "css", minify: true }),
+    transform(styleSource, { loader: "css", minify: true }),
+]);
 const fontBase64 = fontSource.toString("base64");
-const leanSvg = createSvg(minifiedStyle, leanRuntimeSource, fontBase64);
-const perfSvg = createSvg(minifiedStyle, perfRuntimeSource, fontBase64);
+const leanSvg = createSvg(leanStyleResult.code, leanRuntimeSource, fontBase64);
+const perfSvg = createSvg(perfStyleResult.code, perfRuntimeSource, fontBase64);
 
 await mkdir(distDir, { recursive: true });
 await mkdir(publicDir, { recursive: true });
@@ -80,6 +82,32 @@ async function buildRuntime(perf) {
     });
 
     return readFile(runtimeFile, "utf8");
+}
+
+function stripLeanOnlyCss(style) {
+    return style
+        .replace(
+            /\.screen-overlay,\n\.options-panel \{/g,
+            ".screen-overlay {",
+        )
+        .replace(
+            /\.screen-overlay\.is-visible,\n\.options-panel\.is-visible \{/g,
+            ".screen-overlay.is-visible {",
+        )
+        .replace(
+            /\.screen-card > rect,\n\.options-panel > rect \{/g,
+            ".screen-card > rect {",
+        )
+        .replace(/\n\.debug-panel \{[^}]*\}/g, "")
+        .replace(/\n\.debug-title \{[^}]*\}/g, "")
+        .replace(/\n\.debug-text \{[^}]*\}/g, "")
+        .replace(/\n\.options-title \{[^}]*\}/g, "")
+        .replace(/\n\.options-label \{[^}]*\}/g, "")
+        .replace(/\n\.volume-slider \{[^}]*\}/g, "")
+        .replace(/\n\.volume-slider-hit \{[^}]*\}/g, "")
+        .replace(/\n\.volume-slider-track \{[^}]*\}/g, "")
+        .replace(/\n\.volume-slider-fill \{[^}]*\}/g, "")
+        .replace(/\n\.volume-slider-knob \{[^}]*\}/g, "");
 }
 
 function measure(value) {

@@ -2,7 +2,7 @@ import { spawnPassengerAt } from "../sim/passengers";
 import { randInt } from "../sim/rng";
 import { invalidateRouteGraph } from "../sim/routing";
 import { createTrainForRoute, distributeRouteTrains } from "../sim/trains";
-import type { Route, Station, StationId, World } from "../sim/types";
+import type { Route, Station, StationId, World, WorldDebug } from "../sim/types";
 import { spawnStation } from "../sim/world";
 
 const ROUTE_COLORS = [
@@ -27,9 +27,10 @@ export function applyDebugAction(world: World, action: DebugAction): void {
             spawnStations(world, 10);
             spawnPaths(world, 20);
             spawnPassengers(world, 250);
-            world.debug.renderAllPassengers = false;
-            world.debug.dirtyRendering = true;
-            world.debug.useSvgGeometry = false;
+            const debug = ensureDebug(world);
+            debug.renderAllPassengers = false;
+            debug.dirtyRendering = true;
+            debug.useSvgGeometry = false;
             world.gameOver = false;
             world.failedStationId = undefined;
             for (const station of world.stations.values()) {
@@ -48,6 +49,15 @@ export function applyDebugAction(world: World, action: DebugAction): void {
             spawnPaths(world, 20);
             return;
     }
+}
+
+function ensureDebug(world: World): WorldDebug {
+    world.debug ??= {
+        renderAllPassengers: false,
+        dirtyRendering: true,
+        useSvgGeometry: false,
+    };
+    return world.debug;
 }
 
 function spawnPassengers(world: World, count: number): void {

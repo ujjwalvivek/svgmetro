@@ -33,7 +33,7 @@ export interface SvgCache {
     routes: RouteRenderCache;
     stations: StationRenderCache;
     trains: TrainRenderCache;
-    debug: DebugRenderCache;
+    debug?: DebugRenderCache;
 }
 
 export interface RenderMetrics {
@@ -49,7 +49,7 @@ export function createSvgCache(): SvgCache {
         routes: createRouteRenderCache(),
         stations: createStationRenderCache(),
         trains: createTrainRenderCache(),
-        debug: PERF_BUILD ? createDebugRenderCache() : {},
+        ...(PERF_BUILD ? { debug: createDebugRenderCache() } : {}),
     };
 }
 
@@ -57,20 +57,23 @@ export function renderWorld(
     root: SvgRoot,
     world: World,
     cache: SvgCache,
-    stats: DebugStats,
+    stats: DebugStats | undefined,
+    selectedStationId: number | undefined,
     editor: RouteEditor,
     sampleNodeCount = false,
     viewport: SvgViewBox = fullViewBox(world.config),
 ): void {
-    const metrics: RenderMetrics = {
-        dirtyStationUpdates: 0,
-        routePathUpdates: 0,
-        trainTransformUpdates: 0,
-        queueRenderCount: 0,
-        passengerIconNodes: 0,
-    };
+    const metrics: RenderMetrics | undefined = PERF_BUILD
+        ? {
+              dirtyStationUpdates: 0,
+              routePathUpdates: 0,
+              trainTransformUpdates: 0,
+              queueRenderCount: 0,
+              passengerIconNodes: 0,
+          }
+        : undefined;
 
-    metrics.routePathUpdates = renderRoutes(
+    const routePathUpdates = renderRoutes(
         root.layers.routes,
         root.layers.routePreview,
         world,
@@ -81,28 +84,33 @@ export function renderWorld(
         root.layers.stations,
         world,
         cache.stations,
-        stats.selectedStationId,
+        selectedStationId,
         editor.previewStationId,
         editor.invalidStationId,
         editor.draftStationIds,
         draftRouteColor(world),
     );
-    metrics.dirtyStationUpdates = stationMetrics.dirtyStationUpdates;
-    metrics.queueRenderCount = stationMetrics.queueRenderCount;
-    metrics.passengerIconNodes = stationMetrics.passengerIconNodes;
-    metrics.trainTransformUpdates = renderTrains(
+    const trainTransformUpdates = renderTrains(
         root.layers.trains,
         world,
         cache.trains,
         cache.routes.routeNodes,
     );
-    stats.renderMetrics = metrics;
 
-    if (PERF_BUILD && sampleNodeCount) {
-        stats.nodeCount = root.svg.querySelectorAll("*").length;
+    if (metrics) {
+        metrics.routePathUpdates = routePathUpdates;
+        metrics.dirtyStationUpdates = stationMetrics.dirtyStationUpdates;
+        metrics.queueRenderCount = stationMetrics.queueRenderCount;
+        metrics.passengerIconNodes = stationMetrics.passengerIconNodes;
+        metrics.trainTransformUpdates = trainTransformUpdates;
+        if (stats) stats.renderMetrics = metrics;
     }
 
-    if (PERF_BUILD) {
-        renderDebug(root.layers.debug, world, stats, cache.debug, viewport);
+    if (PERF_BUILD && sampleNodeCount) {
+        if (stats) stats.nodeCount = root.svg.querySelectorAll("*").length;
+    }
+
+    if (PERF_BUILD && stats && root.layers.debug) {
+        renderDebug(root.layers.debug, world, stats, cache.debug ?? createDebugRenderCache(), viewport);
     }
 }

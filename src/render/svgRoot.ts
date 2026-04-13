@@ -9,7 +9,7 @@ export interface SvgLayers {
     trains: SVGGElement;
     passengers: SVGGElement;
     effects: SVGGElement;
-    debug: SVGGElement;
+    debug?: SVGGElement;
 }
 
 export interface SvgRoot {

@@ -1,4 +1,4 @@
-import { createMetroAudio } from "../audio/metroAudio";
+import { createMetroAudio, type AudioCue } from "../audio/metroAudio";
 import { applyDebugAction } from "../debug/actions";
 import { createFrameStats, updateFrameStats } from "../debug/stats";
 import { findRouteId, findStationId } from "../input/hitTest";
@@ -31,6 +31,7 @@ import {
     type DifficultyName,
     type World,
     type WorldConfig,
+    type WorldDebug,
 } from "../sim/types";
 import { createWorld } from "../sim/world";
 
@@ -72,19 +73,19 @@ const svgRoot = createStandaloneSvgRoot(
 );
 let cache = createSvgCache();
 const audio = createMetroAudio();
-const stats = createFrameStats();
+const stats = PERF_BUILD ? createFrameStats() : undefined;
 let lastNodeCountSample = 0;
 const hud = createHud();
 const linePalette = createLinePalette();
 const startOverlay = createStartOverlay();
-const optionsPanel = createOptionsPanel();
+const optionsPanel = PERF_BUILD ? createOptionsPanel() : undefined;
 const gameOverOverlay = createGameOverOverlay();
 
 svgRoot.svg.append(
     hud,
     linePalette,
     startOverlay,
-    optionsPanel,
+    ...(optionsPanel ? [optionsPanel] : []),
     gameOverOverlay,
 );
 const ui = createUiRefs();
@@ -163,7 +164,7 @@ function createStandaloneSvgRoot(
     svg.setAttribute("role", "application");
     svg.setAttribute("aria-label", "SVG Metro");
 
-    for (const id of [
+    const removableLayerIds = [
         "svg-defs",
         "background",
         "routes",
@@ -172,13 +173,15 @@ function createStandaloneSvgRoot(
         "trains",
         "passengers",
         "effects",
-        "debug",
+        ...(PERF_BUILD ? ["debug"] : []),
         "svg-hud",
         "line-palette",
         "start-screen",
-        "options-panel",
+        ...(PERF_BUILD ? ["options-panel"] : []),
         "game-over",
-    ]) {
+    ];
+
+    for (const id of removableLayerIds) {
         svg.querySelector(`#${id}`)?.remove();
     }
 
@@ -190,7 +193,7 @@ function createStandaloneSvgRoot(
     const trains = layer("trains");
     const passengers = layer("passengers");
     const effects = layer("effects");
-    const debug = layer("debug");
+    const debug = PERF_BUILD ? layer("debug") : undefined;
 
     renderBackground(background, config, seed);
     svg.append(
@@ -202,7 +205,7 @@ function createStandaloneSvgRoot(
         trains,
         passengers,
         effects,
-        debug,
+        ...(debug ? [debug] : []),
     );
 
     const layers: SvgLayers = {
@@ -213,7 +216,7 @@ function createStandaloneSvgRoot(
         trains,
         passengers,
         effects,
-        debug,
+        ...(debug ? { debug } : {}),
     };
 
     return { svg, layers };
@@ -492,6 +495,15 @@ function createHud(): SVGGElement {
     waitingLabel.textContent = "WAITING";
     ridingLabel.textContent = "RIDING";
 
+    const buttons = [
+        createButton("save", 300, 4, "save-game", 50, 17),
+        createButton("normal", 300, 26, "cycle-difficulty", 50, 17),
+    ];
+    
+    if (PERF_BUILD) {
+        buttons.push(createButton("opts", 300, 48, "toggle-options", 50, 17));
+    }
+
     group.append(
         panel,
         title,
@@ -506,9 +518,7 @@ function createHud(): SVGGElement {
         ridingCount,
         statsText,
         meta,
-        createButton("save", 300, 4, "save-game", 50, 17),
-        createButton("opts", 300, 26, "toggle-options", 50, 17),
-        createButton("normal", 300, 48, "cycle-difficulty", 50, 17),
+        ...buttons,
     );
     return group;
 }
@@ -723,7 +733,6 @@ function createOptionsPanel(): SVGGElement {
     group.append(...nodes);
     return group;
 }
-
 function createVolumeSlider(x: number, y: number): SVGGElement {
     const group = svgEl("g", {
         id: "volume-slider",
@@ -852,16 +861,16 @@ interface UiRefs {
     riding: SVGTextElement | null;
     gameOver: SVGGElement | null;
     start: SVGGElement | null;
-    options: SVGGElement | null;
-    debugLabel: SVGTextElement | null;
-    audioLabel: SVGTextElement | null;
-    volumeLabel: SVGTextElement | null;
-    volumeSlider: SVGGElement | null;
-    volumeFill: SVGRectElement | null;
-    volumeKnob: SVGRectElement | null;
-    svgGeometryButton: SVGTextElement | null;
-    renderAllButton: SVGTextElement | null;
-    dirtyButton: SVGTextElement | null;
+    options?: SVGGElement | null;
+    debugLabel?: SVGTextElement | null;
+    audioLabel?: SVGTextElement | null;
+    volumeLabel?: SVGTextElement | null;
+    volumeSlider?: SVGGElement | null;
+    volumeFill?: SVGRectElement | null;
+    volumeKnob?: SVGRectElement | null;
+    svgGeometryButton?: SVGTextElement | null;
+    renderAllButton?: SVGTextElement | null;
+    dirtyButton?: SVGTextElement | null;
     difficultyButton: SVGTextElement | null;
     swatches: SVGCircleElement[];
 }
@@ -876,30 +885,46 @@ function createUiRefs(): UiRefs {
         riding: svgRoot.svg.querySelector<SVGTextElement>("#hud-riding"),
         gameOver: svgRoot.svg.querySelector<SVGGElement>("#game-over"),
         start: svgRoot.svg.querySelector<SVGGElement>("#start-screen"),
-        options: svgRoot.svg.querySelector<SVGGElement>("#options-panel"),
-        debugLabel: svgRoot.svg.querySelector<SVGTextElement>(
-            "#debug-toggle-label",
-        ),
-        audioLabel: svgRoot.svg.querySelector<SVGTextElement>(
-            "#audio-toggle-label",
-        ),
-        volumeLabel: svgRoot.svg.querySelector<SVGTextElement>("#volume-label"),
-        volumeSlider: svgRoot.svg.querySelector<SVGGElement>("#volume-slider"),
-        volumeFill: svgRoot.svg.querySelector<SVGRectElement>(
-            "#volume-slider-fill",
-        ),
-        volumeKnob: svgRoot.svg.querySelector<SVGRectElement>(
-            "#volume-slider-knob",
-        ),
-        svgGeometryButton: svgRoot.svg.querySelector<SVGTextElement>(
-            `g[${SVG_ACTION_ATTR}="toggle-svg-geometry"] text`,
-        ),
-        renderAllButton: svgRoot.svg.querySelector<SVGTextElement>(
-            `g[${SVG_ACTION_ATTR}="toggle-render-all-passengers"] text`,
-        ),
-        dirtyButton: svgRoot.svg.querySelector<SVGTextElement>(
-            `g[${SVG_ACTION_ATTR}="toggle-dirty-rendering"] text`,
-        ),
+        ...(PERF_BUILD
+            ? {
+                  options:
+                      svgRoot.svg.querySelector<SVGGElement>("#options-panel"),
+                  debugLabel:
+                      svgRoot.svg.querySelector<SVGTextElement>(
+                          "#debug-toggle-label",
+                      ),
+                  audioLabel:
+                      svgRoot.svg.querySelector<SVGTextElement>(
+                          "#audio-toggle-label",
+                      ),
+                  volumeLabel:
+                      svgRoot.svg.querySelector<SVGTextElement>(
+                          "#volume-label",
+                      ),
+                  volumeSlider:
+                      svgRoot.svg.querySelector<SVGGElement>("#volume-slider"),
+                  volumeFill:
+                      svgRoot.svg.querySelector<SVGRectElement>(
+                          "#volume-slider-fill",
+                      ),
+                  volumeKnob:
+                      svgRoot.svg.querySelector<SVGRectElement>(
+                          "#volume-slider-knob",
+                      ),
+                  svgGeometryButton:
+                      svgRoot.svg.querySelector<SVGTextElement>(
+                          `g[${SVG_ACTION_ATTR}="toggle-svg-geometry"] text`,
+                      ),
+                  renderAllButton:
+                      svgRoot.svg.querySelector<SVGTextElement>(
+                          `g[${SVG_ACTION_ATTR}="toggle-render-all-passengers"] text`,
+                      ),
+                  dirtyButton:
+                      svgRoot.svg.querySelector<SVGTextElement>(
+                          `g[${SVG_ACTION_ATTR}="toggle-dirty-rendering"] text`,
+                      ),
+              }
+            : {}),
         difficultyButton: svgRoot.svg.querySelector<SVGTextElement>(
             `g[${SVG_ACTION_ATTR}="cycle-difficulty"] text`,
         ),
@@ -911,7 +936,7 @@ function createUiRefs(): UiRefs {
 
 function wireInput(): void {
     svgRoot.svg.addEventListener("pointermove", (event) => {
-        if (volumeDrag) {
+        if (PERF_BUILD && volumeDrag) {
             event.preventDefault();
             updateVolumeFromPointer(event);
             return;
@@ -951,18 +976,18 @@ function wireInput(): void {
     });
 
     svgRoot.svg.addEventListener("pointerdown", (event) => {
-        audio.unlock();
+        unlockAudio();
         const target = event.target instanceof Element ? event.target : null;
         const actionNode = target?.closest(`[${SVG_ACTION_ATTR}]`);
         const action = actionNode?.getAttribute(SVG_ACTION_ATTR);
 
-        if (action === "volume-slider") {
+        if (PERF_BUILD && action === "volume-slider") {
             event.preventDefault();
-            audio.unlock();
+            unlockAudio();
             volumeDrag = true;
             svgRoot.svg.setPointerCapture(event.pointerId);
             updateVolumeFromPointer(event);
-            audio.cue("ui");
+            cueAudio("ui");
             render();
             return;
         }
@@ -975,7 +1000,7 @@ function wireInput(): void {
                 action === "stress-routes")
         ) {
             event.preventDefault();
-            audio.cue("ui");
+            cueAudio("ui");
             applyDebugAction(world, action);
             routeEditor.lastCommand = action;
             syncViewBox();
@@ -985,8 +1010,9 @@ function wireInput(): void {
 
         if (PERF_BUILD && action === "toggle-render-all-passengers") {
             event.preventDefault();
-            audio.cue("ui");
-            world.debug.renderAllPassengers = !world.debug.renderAllPassengers;
+            cueAudio("ui");
+            const debug = ensureDebug();
+            debug.renderAllPassengers = !debug.renderAllPassengers;
             markAllStationQueuesDirty();
             routeEditor.lastCommand = "toggle-allpax";
             render();
@@ -995,8 +1021,9 @@ function wireInput(): void {
 
         if (PERF_BUILD && action === "toggle-dirty-rendering") {
             event.preventDefault();
-            audio.cue("ui");
-            world.debug.dirtyRendering = !world.debug.dirtyRendering;
+            cueAudio("ui");
+            const debug = ensureDebug();
+            debug.dirtyRendering = !debug.dirtyRendering;
             markAllStationQueuesDirty();
             routeEditor.lastCommand = "toggle-dirty";
             render();
@@ -1005,21 +1032,21 @@ function wireInput(): void {
 
         if (action === "start-game") {
             event.preventDefault();
-            audio.cue("start");
+            cueAudio("start");
             startGame();
             return;
         }
 
         if (action === "restart-game") {
             event.preventDefault();
-            audio.cue("start");
+            cueAudio("start");
             restart();
             return;
         }
 
-        if (action === "toggle-options") {
+        if (action === "toggle-options" && PERF_BUILD) {
             event.preventDefault();
-            audio.cue("ui");
+            cueAudio("ui");
             optionsOpen = !optionsOpen;
             render();
             return;
@@ -1027,7 +1054,7 @@ function wireInput(): void {
 
         if (PERF_BUILD && action === "toggle-debug") {
             event.preventDefault();
-            audio.cue("ui");
+            cueAudio("ui");
             debugVisible = !debugVisible;
             render();
             return;
@@ -1035,8 +1062,9 @@ function wireInput(): void {
 
         if (PERF_BUILD && action === "toggle-svg-geometry") {
             event.preventDefault();
-            audio.cue("ui");
-            world.debug.useSvgGeometry = !world.debug.useSvgGeometry;
+            cueAudio("ui");
+            const debug = ensureDebug();
+            debug.useSvgGeometry = !debug.useSvgGeometry;
             routeEditor.lastCommand = "toggle-svg-geometry";
             render();
             return;
@@ -1044,22 +1072,22 @@ function wireInput(): void {
 
         if (action === "cycle-difficulty") {
             event.preventDefault();
-            audio.cue("ui");
+            cueAudio("ui");
             cycleDifficulty();
             return;
         }
 
-        if (action === "toggle-audio") {
+        if (PERF_BUILD && action === "toggle-audio") {
             event.preventDefault();
             audio.setEnabled(!audio.enabled);
-            if (audio.enabled) audio.cue("ui");
+            if (audio.enabled) cueAudio("ui");
             render();
             return;
         }
 
         if (action === "save-game") {
             event.preventDefault();
-            audio.cue("ui");
+            cueAudio("ui");
             downloadCurrentSvg();
             routeEditor.lastCommand = "save-game";
             render();
@@ -1082,7 +1110,7 @@ function wireInput(): void {
     });
 
     svgRoot.svg.addEventListener("pointerup", (event) => {
-        if (!volumeDrag) return;
+        if (!PERF_BUILD || !volumeDrag) return;
 
         event.preventDefault();
         volumeDrag = false;
@@ -1092,7 +1120,7 @@ function wireInput(): void {
     });
 
     svgRoot.svg.addEventListener("pointercancel", (event) => {
-        if (!volumeDrag) return;
+        if (!PERF_BUILD || !volumeDrag) return;
 
         volumeDrag = false;
         if (svgRoot.svg.hasPointerCapture(event.pointerId)) {
@@ -1101,11 +1129,11 @@ function wireInput(): void {
     });
 
     document.addEventListener("keydown", (event) => {
-        audio.unlock();
+        unlockAudio();
 
         if (event.key.toLowerCase() === "n") {
             event.preventDefault();
-            audio.cue("start");
+            cueAudio("start");
             restart();
             return;
         }
@@ -1137,6 +1165,18 @@ function setEditorPreview(
     render();
 }
 
+function unlockAudio(): void {
+    audio.unlock();
+}
+
+function cueAudio(cue: AudioCue): void {
+    audio.cue(cue);
+}
+
+function updateAudio(): void {
+    audio.update();
+}
+
 function frame(now: number): void {
     const frameMs = now - last;
     const dt = Math.min(frameMs / 1000, 0.25);
@@ -1150,9 +1190,9 @@ function frame(now: number): void {
     }
 
     emitWorldAudioEvents();
-    audio.update();
+    updateAudio();
     syncViewBox();
-    updateFrameStats(stats, frameMs);
+    if (PERF_BUILD && stats) updateFrameStats(stats, frameMs);
     render();
     requestAnimationFrame(frame);
 }
@@ -1305,6 +1345,15 @@ function applyCommand(command: GameCommand): void {
     render();
 }
 
+function ensureDebug(): WorldDebug {
+    world.debug ??= {
+        renderAllPassengers: false,
+        dirtyRendering: true,
+        useSvgGeometry: false,
+    };
+    return world.debug;
+}
+
 function markAllStationQueuesDirty(): void {
     for (const station of world.stations.values()) {
         station.dirtyQueue = true;
@@ -1377,23 +1426,26 @@ function resetRenderState(): void {
     svgRoot.layers.trains.replaceChildren();
     svgRoot.layers.passengers.replaceChildren();
     svgRoot.layers.effects.replaceChildren();
-    svgRoot.layers.debug.replaceChildren();
+    if (PERF_BUILD && svgRoot.layers.debug) svgRoot.layers.debug.replaceChildren();
     cache = createSvgCache();
-    stats.nodeCount = 0;
+    if (stats) stats.nodeCount = 0;
     lastNodeCountSample = 0;
 }
 
 function render(): void {
-    const debugStats = {
-        ...stats,
-        selectedStationId,
-        lastCommand: routeEditor.lastCommand,
-        draftStations: routeEditor.draftStationIds.length,
-    };
+    const debugStats = PERF_BUILD && stats
+        ? {
+              ...stats,
+              selectedStationId,
+              lastCommand: routeEditor.lastCommand,
+              draftStations: routeEditor.draftStationIds.length,
+          }
+        : undefined;
 
     const now = performance.now();
     const shouldSampleNodeCount =
         PERF_BUILD &&
+        stats !== undefined &&
         (stats.nodeCount === 0 ||
             (debugVisible &&
                 now - lastNodeCountSample >= NODE_COUNT_SAMPLE_MS));
@@ -1402,16 +1454,16 @@ function render(): void {
         world,
         cache,
         debugStats,
+        selectedStationId,
         routeEditor,
         shouldSampleNodeCount,
         currentViewBox,
     );
     if (shouldSampleNodeCount) lastNodeCountSample = now;
-    stats.nodeCount = debugStats.nodeCount;
-    svgRoot.layers.debug.classList.toggle(
-        "is-hidden",
-        !PERF_BUILD || !debugVisible,
-    );
+    if (stats && debugStats) stats.nodeCount = debugStats.nodeCount;
+    if (PERF_BUILD && svgRoot.layers.debug) {
+        svgRoot.layers.debug.classList.toggle("is-hidden", !debugVisible);
+    }
     renderUi();
 }
 
@@ -1435,10 +1487,11 @@ function syncViewportUi(): void {
         "transform",
         `translate(${x + 22 * scale} ${y + 18 * scale}) scale(${scale})`,
     );
-    optionsPanel.setAttribute(
-        "transform",
-        `translate(${x + 380 * scale} ${y + 18 * scale}) scale(${scale})`,
-    );
+    if (optionsPanel)
+        optionsPanel.setAttribute(
+            "transform",
+            `translate(${x + 380 * scale} ${y + 18 * scale}) scale(${scale})`,
+        );
     linePalette.setAttribute(
         "transform",
         `translate(${x + width / 2 - (LINE_PALETTE_WIDTH * scale) / 2} ${y + height - 48 * scale}) scale(${scale})`,
@@ -1505,29 +1558,31 @@ function renderUi(): void {
     }
 
     if (ui.start) ui.start.classList.toggle("is-visible", mode === "start");
-    if (ui.options) ui.options.classList.toggle("is-visible", optionsOpen);
-    if (ui.debugLabel)
-        ui.debugLabel.textContent = `Debug overlay ${debugVisible ? "on" : "off"}`;
-    if (ui.audioLabel)
-        ui.audioLabel.textContent = `Sound ${audio.enabled ? (audio.unlocked ? "on" : "ready") : "off"}`;
-    if (ui.volumeLabel)
-        ui.volumeLabel.textContent = `Volume ${Math.round(audio.volume * 100)}`;
-    if (ui.volumeFill)
-        ui.volumeFill.setAttribute(
-            "width",
-            String(VOLUME_SLIDER_WIDTH * audio.volume),
-        );
-    if (ui.volumeKnob)
-        ui.volumeKnob.setAttribute(
-            "x",
-            String(VOLUME_SLIDER_WIDTH * audio.volume - 4),
-        );
-    if (ui.svgGeometryButton)
-        ui.svgGeometryButton.textContent = `geom ${world.debug.useSvgGeometry ? "on" : "off"}`;
-    if (ui.renderAllButton)
-        ui.renderAllButton.textContent = `allpax ${world.debug.renderAllPassengers ? "on" : "off"}`;
-    if (ui.dirtyButton)
-        ui.dirtyButton.textContent = `dirty ${world.debug.dirtyRendering ? "on" : "off"}`;
+    if (PERF_BUILD) {
+        if (ui.options) ui.options.classList.toggle("is-visible", optionsOpen);
+        if (ui.debugLabel)
+            ui.debugLabel.textContent = `Debug overlay ${debugVisible ? "on" : "off"}`;
+        if (ui.audioLabel)
+            ui.audioLabel.textContent = `Sound ${audio.enabled ? (audio.unlocked ? "on" : "ready") : "off"}`;
+        if (ui.volumeLabel)
+            ui.volumeLabel.textContent = `Volume ${Math.round(audio.volume * 100)}`;
+        if (ui.volumeFill)
+            ui.volumeFill.setAttribute(
+                "width",
+                String(VOLUME_SLIDER_WIDTH * audio.volume),
+            );
+        if (ui.volumeKnob)
+            ui.volumeKnob.setAttribute(
+                "x",
+                String(VOLUME_SLIDER_WIDTH * audio.volume - 4),
+            );
+        if (ui.svgGeometryButton)
+            ui.svgGeometryButton.textContent = `geom ${world.debug?.useSvgGeometry ? "on" : "off"}`;
+        if (ui.renderAllButton)
+            ui.renderAllButton.textContent = `allpax ${world.debug?.renderAllPassengers ? "on" : "off"}`;
+        if (ui.dirtyButton)
+            ui.dirtyButton.textContent = `dirty ${world.debug?.dirtyRendering ? "on" : "off"}`;
+    }
     if (ui.difficultyButton)
         ui.difficultyButton.textContent = world.config.difficulty;
     if (ui.meta) ui.meta.textContent = hudMetaText();
@@ -1580,15 +1635,15 @@ function cueCommand(command: GameCommand): void {
     switch (command.type) {
         case "append-station":
         case "select-route":
-            audio.cue("select");
+            cueAudio("select");
             return;
         case "commit-route":
-            audio.cue("commit");
+            cueAudio("commit");
             return;
         case "undo-route":
         case "cancel-route":
         case "reset-route":
-            audio.cue("cancel");
+            cueAudio("cancel");
             return;
     }
 }
@@ -1599,10 +1654,10 @@ function emitWorldAudioEvents(): void {
         return;
     }
 
-    if (world.stations.size > audioSnapshot.stations) audio.cue("station");
-    if (world.score > audioSnapshot.score) audio.cue("deliver");
-    if (!world.gameOver && hasCongestionWarning(world)) audio.cue("congestion");
-    if (world.gameOver && !audioSnapshot.gameOver) audio.cue("gameover");
+    if (world.stations.size > audioSnapshot.stations) cueAudio("station");
+    if (world.score > audioSnapshot.score) cueAudio("deliver");
+    if (!world.gameOver && hasCongestionWarning(world)) cueAudio("congestion");
+    if (world.gameOver && !audioSnapshot.gameOver) cueAudio("gameover");
     audioSnapshot = captureAudioState(world);
 }
 

@@ -64,12 +64,17 @@ npm install @ujjwalvivek/svg-metro
 ### From CDN
 
 ```html
-<object data="https://cdn.jsdelivr.net/npm/@ujjwalvivek/svg-metro@latest/dist/minimetro.svg" type="image/svg+xml" width="100%" height="100%"></object>
+<object
+    data="https://cdn.jsdelivr.net/npm/@ujjwalvivek/svg-metro@latest/dist/minimetro.svg"
+    type="image/svg+xml"
+    width="100%"
+    height="100%"
+></object>
 ```
 
 ### From URL
 
-Open the URL directly in a browser:  
+Open the URL directly in a browser:
 
 `https://cdn.jsdelivr.net/npm/@ujjwalvivek/svg-metro@latest/dist/minimetro.svg`
 `https://unpkg.com/@ujjwalvivek/svg-metro@latest/dist/minimetro.svg`

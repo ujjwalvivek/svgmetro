@@ -81,9 +81,9 @@ describe("debug actions", () => {
 
     it("resets expensive debug modes and marks queues dirty", () => {
         const world = createWorld(63);
-        world.debug.renderAllPassengers = true;
-        world.debug.dirtyRendering = false;
-        world.debug.useSvgGeometry = true;
+        world.debug!.renderAllPassengers = true;
+        world.debug!.dirtyRendering = false;
+        world.debug!.useSvgGeometry = true;
         world.gameOver = true;
         for (const station of world.stations.values()) {
             station.overcrowd = 5;
@@ -93,9 +93,9 @@ describe("debug actions", () => {
 
         applyDebugAction(world, "stress-test");
 
-        expect(world.debug.renderAllPassengers).toBe(false);
-        expect(world.debug.dirtyRendering).toBe(true);
-        expect(world.debug.useSvgGeometry).toBe(false);
+        expect(world.debug!.renderAllPassengers).toBe(false);
+        expect(world.debug!.dirtyRendering).toBe(true);
+        expect(world.debug!.useSvgGeometry).toBe(false);
         expect(world.gameOver).toBe(false);
         expect(
             [...world.stations.values()].every((station) => station.dirtyQueue),

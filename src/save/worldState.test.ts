@@ -22,7 +22,7 @@ describe("world save state", () => {
         });
         applyRouteCommand(world, editor, { type: "commit-route" });
         spawnPassengerAt(world, start, target.type);
-        world.debug.renderAllPassengers = true;
+        world.debug!.renderAllPassengers = true;
         world.time = 123.45;
         world.tick = 7407;
 
@@ -35,7 +35,7 @@ describe("world save state", () => {
         expect(restored.routes.size).toBe(world.routes.size);
         expect(restored.trains.size).toBe(world.trains.size);
         expect(restored.passengers.size).toBe(world.passengers.size);
-        expect(restored.debug.renderAllPassengers).toBe(true);
+        expect(restored.debug!.renderAllPassengers).toBe(true);
         expect(
             [...restored.stations.values()].every(
                 (station) => station.dirtyQueue && station.dirtyVisual,

@@ -1,4 +1,9 @@
 import { setAttrs, svgEl } from "./svgElements";
+
+declare const __SVG_METRO_PERF__: boolean;
+
+const PERF_BUILD =
+    typeof __SVG_METRO_PERF__ === "boolean" ? __SVG_METRO_PERF__ : true;
 import { trainDistanceAlongRoute, trainPosition } from "../sim/trains";
 import type { RouteId, Train, TrainId, World } from "../sim/types";
 
@@ -22,7 +27,7 @@ export function renderTrains(
     let transformUpdates = 0;
 
     for (const train of world.trains.values()) {
-        const position = world.debug.useSvgGeometry
+        const position = PERF_BUILD && world.debug?.useSvgGeometry
             ? (svgTrainPosition(world, train, routeNodes) ??
               trainPosition(world, train))
             : trainPosition(world, train);
