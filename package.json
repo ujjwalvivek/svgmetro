@@ -29,7 +29,8 @@
         "build": "tsc && node svg-metro.mjs",
         "preview": "vite preview",
         "test": "vitest run",
-        "deploy": "npm run build && rm -rf deploy && mkdir -p deploy && cp index.html deploy/index.html && cp dist/minimetro.svg deploy/minimetro.svg && npx wrangler pages deploy deploy/ --project-name=svg-metro"
+        "deploy": "npm run build && rm -rf deploy && mkdir -p deploy && cp index.html deploy/index.html && cp dist/minimetro.svg deploy/minimetro.svg && npx wrangler pages deploy deploy/ --project-name=svg-metro",
+        "upload": "npm run build && npx wrangler r2 object put portfolio-assets/games/minimetro.svg --file dist/minimetro.svg --content-type image/svg+xml --cache-control \"public, max-age=300\" --remote"
     },
     "devDependencies": {
         "typescript": "^5.9.3",
